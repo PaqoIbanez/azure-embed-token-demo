@@ -36,20 +36,20 @@ builder.Services.AddHttpClient();
 // Configurar rate limiting (limitar solicitudes)
 builder.Services.AddRateLimiter(options =>
 {
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Request.Headers.Host.ToString() ??
-                          httpContext.Request.HttpContext.Connection.RemoteIpAddress?.ToString()!,
-            factory: partition => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 30, // Máximo 30 solicitudes (Adjusted from 15 to 30 - Review this value)
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 10, // Adjusted queue limit (Review this value)
-            }
-        )
-    );
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+  options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+      RateLimitPartition.GetFixedWindowLimiter(
+          partitionKey: httpContext.Request.Headers.Host.ToString() ??
+                        httpContext.Request.HttpContext.Connection.RemoteIpAddress?.ToString()!,
+          factory: partition => new FixedWindowRateLimiterOptions
+          {
+            PermitLimit = 15, // Máximo 15 solicitudes
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 5,
+          }
+      )
+  );
+  options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
 // Configurar la autenticación JWT
@@ -62,75 +62,75 @@ var audience = builder.Configuration["Jwt:Audience"];
 
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+  options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+  options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
 {
-    options.Events = new JwtBearerEvents
+  options.Events = new JwtBearerEvents
+  {
+    OnAuthenticationFailed = context =>
     {
-        OnAuthenticationFailed = context =>
-        {
-            Console.WriteLine($"Fallo en la autenticación JWT: {context.Exception.Message}");
-            return Task.CompletedTask;
-        },
-        OnTokenValidated = context =>
-        {
-            Console.WriteLine("Token JWT validado correctamente.");
-
-            // Get the IAuthService instance
-            var authService = context.HttpContext.RequestServices.GetRequiredService<IAuthService>();
-
-            // Get the JTI claim
-            var jti = context.SecurityToken.Id;
-            if (string.IsNullOrEmpty(jti))
-            {
-                context.Fail("JTI claim is missing.");
-                return Task.CompletedTask;
-            }
-
-            // Check if the token is invalidated
-            if (authService.IsTokenInvalidated(jti))
-            {
-                context.Fail("This token has been invalidated.");
-                return Task.CompletedTask;
-            }
-
-            return Task.CompletedTask;
-        }
-    };
-    options.TokenValidationParameters = new TokenValidationParameters
+      Console.WriteLine($"Fallo en la autenticación JWT: {context.Exception.Message}");
+      return Task.CompletedTask;
+    },
+    OnTokenValidated = context =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = issuer,
-        ValidAudience = audience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
-    };
+      Console.WriteLine("Token JWT validado correctamente.");
+
+      // Get the IAuthService instance
+      var authService = context.HttpContext.RequestServices.GetRequiredService<IAuthService>();
+
+      // Get the JTI claim
+      var jti = context.SecurityToken.Id;
+      if (string.IsNullOrEmpty(jti))
+      {
+        context.Fail("JTI claim is missing.");
+        return Task.CompletedTask;
+      }
+
+      // Check if the token is invalidated
+      if (authService.IsTokenInvalidated(jti))
+      {
+        context.Fail("This token has been invalidated.");
+        return Task.CompletedTask;
+      }
+
+      return Task.CompletedTask;
+    }
+  };
+  options.TokenValidationParameters = new TokenValidationParameters
+  {
+    ValidateIssuer = true,
+    ValidateAudience = true,
+    ValidateLifetime = true,
+    ValidateIssuerSigningKey = true,
+    ValidIssuer = issuer,
+    ValidAudience = audience,
+    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+  };
 });
 
 // Configurar CORS usando la variable AllowedDomains del .env
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("CorsPolicy", policyBuilder =>
-    {
-        var allowedDomains = builder.Configuration["AllowedDomains"]?
-                               .Split(',')
-                               ?? new string[] { "http://localhost:4200" };
-        policyBuilder.WithOrigins(allowedDomains)
-                     .AllowAnyHeader()
-                     .AllowAnyMethod()
-                     .AllowCredentials();
-    });
+  options.AddPolicy("CorsPolicy", policyBuilder =>
+  {
+    var allowedDomains = builder.Configuration["AllowedDomains"]?
+                           .Split(',')
+                           ?? new string[] { "http://localhost:4200" };
+    policyBuilder.WithOrigins(allowedDomains)
+                 .AllowAnyHeader()
+                 .AllowAnyMethod()
+                 .AllowCredentials();
+  });
 });
 
 // Agregar política de autorización (ejemplo)
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("CanViewPowerBIReport", policy =>
-          policy.RequireRole("FiltroAlumno", "FiltroMentor"));
+  options.AddPolicy("CanViewPowerBIReport", policy =>
+        policy.RequireRole("FiltroAlumno", "FiltroMentor"));
 });
 
 var app = builder.Build();
@@ -138,26 +138,24 @@ var app = builder.Build();
 // Redirección forzada a HTTPS
 app.UseHttpsRedirection();
 
-// ** IMPORTANT: UPDATE THE CSP VALUE BELOW WITH YOUR ACTUAL RESOURCES! **
 string cspValue = "default-src 'self';" +
-                  "script-src 'self' 'unsafe-inline';" + //  'unsafe-inline' needed if you have inline scripts, consider externalizing them
-                  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;" + // Added CDNs for common CSS/font resources and 'unsafe-inline' - review if really needed.
+                  "script-src 'self' https://cdn.example.com;" +
+                  "style-src 'self' https://fonts.example.com;" +
                   "img-src 'self' data:;" +
-                  "font-src 'self' https://fonts.gstatic.com data:;" +
-                  "connect-src 'self' https://api.powerbi.com;" ; //  Allowed connection to Power BI API, review other APIs needed.
-
+                  "font-src 'self' https://fonts.gstatic.com;" +
+                  "connect-src 'self' https://api.example.com;";
 app.UseRateLimiter();
 app.UseHsts();
 
 // Agregar cabeceras de seguridad
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
-    context.Response.Headers.Append("X-Frame-Options", "DENY");
-    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
-    context.Response.Headers.Append("Permissions-Policy", "geolocation=(), microphone=()");
-    context.Response.Headers.Append("Content-Security-Policy", cspValue);
-    await next();
+  context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+  context.Response.Headers.Append("X-Frame-Options", "DENY");
+  context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+  context.Response.Headers.Append("Permissions-Policy", "geolocation=(), microphone=()");
+  context.Response.Headers.Append("Content-Security-Policy", cspValue);
+  await next();
 });
 
 app.UseCors("CorsPolicy");
