@@ -1,5 +1,3 @@
-# Dockerfile
-
 # Etapa base: Imagen del runtime de ASP.NET Core
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 WORKDIR /app

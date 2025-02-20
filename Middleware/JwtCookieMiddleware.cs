@@ -1,5 +1,3 @@
-// Middleware/JwtCookieMiddleware.cs
-
 namespace MyBackend.Middleware
 {
   public class JwtCookieMiddleware

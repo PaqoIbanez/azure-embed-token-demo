@@ -1,5 +1,3 @@
-// Data/ApplicationDbContext.cs
-
 using Microsoft.EntityFrameworkCore;
 using MyBackend.Models;
 

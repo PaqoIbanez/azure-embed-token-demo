@@ -1,5 +1,3 @@
-// Controllers/AuthController.cs
-
 using Microsoft.AspNetCore.Mvc;
 using MyBackend.Services;
 using Microsoft.AspNetCore.Authorization;
